@@ -4,15 +4,21 @@ package org.example;
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
 import com.mxgraph.model.mxCell;
 import com.mxgraph.swing.mxGraphComponent;
+import com.mxgraph.util.mxConstants;
 import com.mxgraph.view.mxGraph;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+import java.awt.BorderLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Main extends JFrame {
 
@@ -26,12 +32,11 @@ public class Main extends JFrame {
         graph = new mxGraph();
         parent = graph.getDefaultParent();
 
-        // Настройки редактора
-        graph.setCellsEditable(true); // 2 клика для редактирования текста
+
+        graph.setCellsEditable(true);
         graph.setCellsMovable(true);
         graph.setCellsResizable(false);
 
-        // Создаем первый узел
         graph.getModel().beginUpdate();
         try {
             graph.insertVertex(parent, null, "P1", 400, 20, 80, 40, "shape=ellipse;fillColor=#C3D9FF");
@@ -42,7 +47,6 @@ public class Main extends JFrame {
         mxGraphComponent graphComponent = new mxGraphComponent(graph);
         getContentPane().add(graphComponent, BorderLayout.CENTER);
 
-        // Кнопки управления
         JPanel panel = new JPanel();
         JButton solveBtn = new JButton("РАССЧИТАТЬ");
         JButton playersBtn = new JButton("Игроков: " + totalPlayers);
@@ -51,7 +55,6 @@ public class Main extends JFrame {
         panel.add(solveBtn);
         getContentPane().add(panel, BorderLayout.SOUTH);
 
-        // Добавление ходов через правую кнопку мыши
         graphComponent.getGraphControl().addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -64,7 +67,6 @@ public class Main extends JFrame {
             }
         });
 
-        // Настройка кол-ва игроков
         playersBtn.addActionListener(e -> {
             String val = JOptionPane.showInputDialog("Введите количество игроков:", totalPlayers);
             if (val != null) {
@@ -73,7 +75,6 @@ public class Main extends JFrame {
             }
         });
 
-        // Запуск алгоритма
         solveBtn.addActionListener(e -> calculateGame());
 
         setSize(900, 600);
@@ -92,26 +93,50 @@ public class Main extends JFrame {
             Object child = graph.insertVertex(parent, null, defaultPayoffs, 0, 0, 80, 40, "fillColor=#D5E8D4");
             graph.insertEdge(parent, null, moveName, parentCell, child);
 
-            // Авто-выравнивание дерева
             new mxHierarchicalLayout(graph).execute(parent);
         } finally {
             graph.getModel().endUpdate();
         }
     }
 
-    // --- ЛОГИКА РАСЧЕТА ---
 
     static class GameNode {
+        mxCell visualCell;
         Integer player;
         double[] payoffs;
-        List<GameNode> next = new ArrayList<>();
+        Map<mxCell, GameNode> children = new HashMap<>();
+        mxCell bestEdge = null;
+    }
+
+    private void resetStyles() {
+        graph.getModel().beginUpdate();
+        try {
+            Object[] allCells = graph.getChildCells(parent, true, true);
+            for (Object c : allCells) {
+                mxCell cell = (mxCell) c;
+
+                graph.setCellStyles(mxConstants.STYLE_STROKECOLOR, "#6482B9", new Object[]{cell});
+                graph.setCellStyles(mxConstants.STYLE_STROKEWIDTH, "1", new Object[]{cell});
+
+                if (cell.isVertex()) {
+                    String color = cell.getValue().toString().startsWith("P") ? "#C3D9FF" : "#D5E8D4";
+                    graph.setCellStyles(mxConstants.STYLE_FILLCOLOR, color, new Object[]{cell});
+                }
+            }
+        } finally {
+            graph.getModel().endUpdate();
+        }
     }
 
     private void calculateGame() {
         try {
+            resetStyles();
+
             mxCell rootCell = (mxCell) graph.getChildVertices(parent)[0];
             GameNode rootLogic = convertToLogic(rootCell);
+
             double[] res = solve(rootLogic);
+            highlightPath(rootLogic);
             JOptionPane.showMessageDialog(this, "Оптимальный исход: " + Arrays.toString(res));
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Ошибка! Проверьте данные в узлах.\n" + ex.getMessage());
@@ -120,6 +145,7 @@ public class Main extends JFrame {
 
     private GameNode convertToLogic(mxCell cell) {
         GameNode node = new GameNode();
+        node.visualCell = cell;
         String val = cell.getValue().toString().trim();
 
         if (val.toUpperCase().startsWith("P")) {
@@ -127,7 +153,8 @@ public class Main extends JFrame {
             for (int i = 0; i < cell.getEdgeCount(); i++) {
                 mxCell edge = (mxCell) cell.getEdgeAt(i);
                 if (edge.getSource() == cell) {
-                    node.next.add(convertToLogic((mxCell) edge.getTarget()));
+
+                    node.children.put(edge, convertToLogic((mxCell) edge.getTarget()));
                 }
             }
         } else {
@@ -144,14 +171,35 @@ public class Main extends JFrame {
         double max = Double.NEGATIVE_INFINITY;
         int pIdx = node.player - 1;
 
-        for (GameNode child : node.next) {
-            double[] cur = solve(child);
-            if (cur[pIdx] > max) {
-                max = cur[pIdx];
-                best = cur;
+        for (Map.Entry<mxCell, GameNode> entry : node.children.entrySet()) {
+            double[] current = solve(entry.getValue());
+            if (current[pIdx] > max) {
+                max = current[pIdx];
+                best = current;
+                node.bestEdge = entry.getKey();
             }
         }
         return best;
+    }
+
+    private void highlightPath(GameNode node) {
+        graph.getModel().beginUpdate();
+        try {
+            // Подсвечиваем текущий узел
+            graph.setCellStyles(mxConstants.STYLE_STROKECOLOR, "#FF0000", new Object[]{node.visualCell});
+            graph.setCellStyles(mxConstants.STYLE_STROKEWIDTH, "4", new Object[]{node.visualCell});
+
+            if (node.bestEdge != null) {
+                // Подсвечиваем ребро
+                graph.setCellStyles(mxConstants.STYLE_STROKECOLOR, "#FF0000", new Object[]{node.bestEdge});
+                graph.setCellStyles(mxConstants.STYLE_STROKEWIDTH, "4", new Object[]{node.bestEdge});
+
+                // Идем дальше по дереву
+                highlightPath(node.children.get(node.bestEdge));
+            }
+        } finally {
+            graph.getModel().endUpdate();
+        }
     }
 
     public static void main(String[] args) {
