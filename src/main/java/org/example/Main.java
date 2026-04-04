@@ -1,6 +1,8 @@
 package org.example;
 
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
 import com.mxgraph.model.mxCell;
 import com.mxgraph.swing.handler.mxKeyboardHandler;
@@ -9,6 +11,7 @@ import com.mxgraph.util.mxConstants;
 import com.mxgraph.view.mxGraph;
 
 import javax.swing.JButton;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -19,6 +22,9 @@ import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -30,6 +36,7 @@ public class Main extends JFrame {
     private mxGraph graph;
     private Object parent;
     private int totalPlayers = 2;
+    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public Main() {
         super("Редактор динамических игр (Теория игр)");
@@ -58,10 +65,21 @@ public class Main extends JFrame {
         JPanel panel = new JPanel();
         JButton solveBtn = new JButton("РАССЧИТАТЬ");
         JButton playersBtn = new JButton("Игроков: " + totalPlayers);
+
+        JButton saveBtn = new JButton("СОХРАНИТЬ JSON");
+        JButton loadBtn = new JButton("ЗАГРУЗИТЬ JSON");
+
         panel.add(new JLabel("ПКМ - добавить ход | Del - Удалить |"));
         panel.add(playersBtn);
         panel.add(solveBtn);
+
+        panel.add(saveBtn);
+        panel.add(loadBtn);
+
         getContentPane().add(panel, BorderLayout.SOUTH);
+
+        saveBtn.addActionListener(e -> saveToJson());
+        loadBtn.addActionListener(e -> loadFromJson());
 
         graphComponent.getGraphControl().addMouseListener(new MouseAdapter() {
             @Override
@@ -87,6 +105,90 @@ public class Main extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
     }
+    static class SaveModel {
+        int players;
+        List<NodeDto> nodes = new ArrayList<>();
+        List<EdgeDto> edges = new ArrayList<>();
+    }
+
+    static class NodeDto {
+        String id, value;
+        double x, y;
+    }
+
+    static class EdgeDto {
+        String sourceId, targetId, label;
+    }
+
+    private void saveToJson() {
+        SaveModel model = new SaveModel();
+        model.players = totalPlayers;
+
+        Object[] vertices = graph.getChildVertices(parent);
+        for (Object v : vertices) {
+            mxCell cell = (mxCell) v;
+            NodeDto n = new NodeDto();
+            n.id = cell.getId();
+            n.value = cell.getValue().toString();
+            n.x = cell.getGeometry().getX();
+            n.y = cell.getGeometry().getY();
+            model.nodes.add(n);
+        }
+
+        Object[] edges = graph.getChildEdges(parent);
+        for (Object e : edges) {
+            mxCell edge = (mxCell) e;
+            EdgeDto ed = new EdgeDto();
+            ed.sourceId = edge.getSource().getId();
+            ed.targetId = edge.getTarget().getId();
+            ed.label = edge.getValue() != null ? edge.getValue().toString() : "";
+            model.edges.add(ed);
+        }
+
+        JFileChooser fileChooser = new JFileChooser();
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try (FileWriter writer = new FileWriter(fileChooser.getSelectedFile())) {
+                gson.toJson(model, writer);
+                JOptionPane.showMessageDialog(this, "Игра сохранена!");
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+    private void loadFromJson() {
+        JFileChooser fileChooser = new JFileChooser();
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try (FileReader reader = new FileReader(fileChooser.getSelectedFile())) {
+                SaveModel model = gson.fromJson(reader, SaveModel.class);
+
+                graph.getModel().beginUpdate();
+                try {
+                    graph.removeCells(graph.getChildCells(parent, true, true));
+
+                    totalPlayers = model.players;
+                    Map<String, Object> idMap = new HashMap<>();
+
+                    for (NodeDto n : model.nodes) {
+                        String style = n.value.startsWith("P") ? "shape=ellipse;fillColor=#C3D9FF" : "fillColor=#D5E8D4";
+                        Object vertex = graph.insertVertex(parent, n.id, n.value, n.x, n.y, 80, 40, style);
+                        idMap.put(n.id, vertex);
+                    }
+
+                    for (EdgeDto ed : model.edges) {
+                        graph.insertEdge(parent, null, ed.label, idMap.get(ed.sourceId), idMap.get(ed.targetId));
+                    }
+                } finally {
+                    graph.getModel().endUpdate();
+                }
+                JOptionPane.showMessageDialog(this, "Игра загружена! Игроков: " + totalPlayers);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Ошибка при чтении JSON!");
+            }
+        }
+    }
+
+
     private void showContextMenu(MouseEvent e, mxCell cell) {
         JPopupMenu menu = new JPopupMenu();
 
@@ -127,7 +229,6 @@ public class Main extends JFrame {
 
         graph.getModel().beginUpdate();
         try {
-            // По умолчанию создаем "лист" с нулевыми выигрышами
             String defaultPayoffs = "0" + ",0".repeat(totalPlayers - 1);
             Object child = graph.insertVertex(parent, null, defaultPayoffs, 0, 0, 80, 40, "fillColor=#D5E8D4");
             graph.insertEdge(parent, null, moveName, parentCell, child);
@@ -146,6 +247,7 @@ public class Main extends JFrame {
         Map<mxCell, GameNode> children = new HashMap<>();
         List<mxCell> bestEdges = new ArrayList<>();
     }
+
 
     private void resetStyles() {
         graph.getModel().beginUpdate();
