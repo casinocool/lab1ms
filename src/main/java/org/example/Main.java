@@ -1,128 +1,160 @@
 package org.example;
-import java.util.*;
 
-public class Main {
-    static Scanner sc = new Scanner(System.in);
-    static int totalPlayers; // Общее кол-во игроков
 
-    static class Node {
-        String path;
-        Integer actingPlayer; // Кто делает ход в этом узле
-        double[] payoffs;     // Массив выигрышей для всех игроков
-        Map<String, Node> moves = new LinkedHashMap<>();
+import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
+import com.mxgraph.model.mxCell;
+import com.mxgraph.swing.mxGraphComponent;
+import com.mxgraph.view.mxGraph;
 
-        Node(String path) { this.path = path; }
-    }
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
-    public static void main(String[] args) {
-        System.out.println("=== Универсальный конструктор динамических игр ===");
+public class Main extends JFrame {
 
-        // 1. Определяем количество участников
-        System.out.print("Введите количество игроков в игре: ");
-        totalPlayers = sc.nextInt();
-        while (totalPlayers < 1) {
-            System.out.print("Игроков должно быть как минимум 1. Повторите ввод: ");
-            totalPlayers = sc.nextInt();
+    private mxGraph graph;
+    private Object parent;
+    private int totalPlayers = 2;
+
+    public Main() {
+        super("Редактор динамических игр (Теория игр)");
+
+        graph = new mxGraph();
+        parent = graph.getDefaultParent();
+
+        // Настройки редактора
+        graph.setCellsEditable(true); // 2 клика для редактирования текста
+        graph.setCellsMovable(true);
+        graph.setCellsResizable(false);
+
+        // Создаем первый узел
+        graph.getModel().beginUpdate();
+        try {
+            graph.insertVertex(parent, null, "P1", 400, 20, 80, 40, "shape=ellipse;fillColor=#C3D9FF");
+        } finally {
+            graph.getModel().endUpdate();
         }
 
-        // 2. Строим дерево игры
-        Node root = buildGame("Корень");
+        mxGraphComponent graphComponent = new mxGraphComponent(graph);
+        getContentPane().add(graphComponent, BorderLayout.CENTER);
 
-        // 3. Выводим структуру
-        System.out.println("\n--- ГРАФ ИГРЫ ---");
-        printTree(root, "");
+        // Кнопки управления
+        JPanel panel = new JPanel();
+        JButton solveBtn = new JButton("РАССЧИТАТЬ");
+        JButton playersBtn = new JButton("Игроков: " + totalPlayers);
+        panel.add(new JLabel("ПКМ - добавить ход | "));
+        panel.add(playersBtn);
+        panel.add(solveBtn);
+        getContentPane().add(panel, BorderLayout.SOUTH);
 
-        // 4. Решаем игру
-        double[] result = solve(root);
-        System.out.println("\n--- РЕЗУЛЬТАТ АНАЛИЗА ---");
-        System.out.println("Рациональные выигрыши для всех игроков:");
-        for (int i = 0; i < totalPlayers; i++) {
-            System.out.printf("Игрок %d: %.2f\n", (i + 1), result[i]);
+        // Добавление ходов через правую кнопку мыши
+        graphComponent.getGraphControl().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    Object cell = graphComponent.getCellAt(e.getX(), e.getY());
+                    if (cell instanceof mxCell && ((mxCell) cell).isVertex()) {
+                        addNextStep((mxCell) cell);
+                    }
+                }
+            }
+        });
+
+        // Настройка кол-ва игроков
+        playersBtn.addActionListener(e -> {
+            String val = JOptionPane.showInputDialog("Введите количество игроков:", totalPlayers);
+            if (val != null) {
+                totalPlayers = Integer.parseInt(val);
+                playersBtn.setText("Игроков: " + totalPlayers);
+            }
+        });
+
+        // Запуск алгоритма
+        solveBtn.addActionListener(e -> calculateGame());
+
+        setSize(900, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+    }
+
+    private void addNextStep(mxCell parentCell) {
+        String moveName = JOptionPane.showInputDialog("Название хода:", "Ход");
+        if (moveName == null) return;
+
+        graph.getModel().beginUpdate();
+        try {
+            // По умолчанию создаем "лист" с нулевыми выигрышами
+            String defaultPayoffs = "0" + ",0".repeat(totalPlayers - 1);
+            Object child = graph.insertVertex(parent, null, defaultPayoffs, 0, 0, 80, 40, "fillColor=#D5E8D4");
+            graph.insertEdge(parent, null, moveName, parentCell, child);
+
+            // Авто-выравнивание дерева
+            new mxHierarchicalLayout(graph).execute(parent);
+        } finally {
+            graph.getModel().endUpdate();
         }
     }
 
-    /**
-     * Рекурсивное построение дерева игры пользователем
-     */
-    static Node buildGame(String path) {
-        System.out.println("\n--- Настройка узла: [" + path + "] ---");
-        System.out.print("Это конец игры (выигрыши)? (д/н): ");
-        String choice = sc.next().toLowerCase();
+    // --- ЛОГИКА РАСЧЕТА ---
 
-        Node node = new Node(path);
+    static class GameNode {
+        Integer player;
+        double[] payoffs;
+        List<GameNode> next = new ArrayList<>();
+    }
 
-        if (choice.equals("д") || choice.equals("y")) {
-            // Терминальный узел: вводим выигрыш для каждого игрока
-            node.payoffs = new double[totalPlayers];
-            System.out.println("  Введите выигрыши для " + totalPlayers + " игроков:");
-            for (int i = 0; i < totalPlayers; i++) {
-                System.out.print("    Выигрыш Игрока " + (i + 1) + ": ");
-                node.payoffs[i] = sc.nextDouble();
+    private void calculateGame() {
+        try {
+            mxCell rootCell = (mxCell) graph.getChildVertices(parent)[0];
+            GameNode rootLogic = convertToLogic(rootCell);
+            double[] res = solve(rootLogic);
+            JOptionPane.showMessageDialog(this, "Оптимальный исход: " + Arrays.toString(res));
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Ошибка! Проверьте данные в узлах.\n" + ex.getMessage());
+        }
+    }
+
+    private GameNode convertToLogic(mxCell cell) {
+        GameNode node = new GameNode();
+        String val = cell.getValue().toString().trim();
+
+        if (val.toUpperCase().startsWith("P")) {
+            node.player = Integer.parseInt(val.substring(1));
+            for (int i = 0; i < cell.getEdgeCount(); i++) {
+                mxCell edge = (mxCell) cell.getEdgeAt(i);
+                if (edge.getSource() == cell) {
+                    node.next.add(convertToLogic((mxCell) edge.getTarget()));
+                }
             }
         } else {
-            // Узел принятия решения
-            System.out.print("  Какой игрок делает ход в этом узле? (от 1 до " + totalPlayers + "): ");
-            int player = sc.nextInt();
-            while (player < 1 || player > totalPlayers) {
-                System.out.print("  Ошибка! Введите номер игрока от 1 до " + totalPlayers + ": ");
-                player = sc.nextInt();
-            }
-            node.actingPlayer = player;
-
-            System.out.print("  Сколько вариантов хода у Игрока " + player + "?: ");
-            int movesCount = sc.nextInt();
-
-            for (int i = 1; i <= movesCount; i++) {
-                System.out.print("  Назовите ход #" + i + ": ");
-                String moveName = sc.next();
-                // Рекурсивный вызов для следующего уровня
-                node.moves.put(moveName, buildGame(path + " -> " + moveName));
-            }
+            String[] parts = val.split(",");
+            node.payoffs = new double[totalPlayers];
+            for (int i = 0; i < totalPlayers; i++) node.payoffs[i] = Double.parseDouble(parts[i]);
         }
         return node;
     }
 
-    /**
-     * Рекурсивный расчет методом обратной индукции
-     */
-    static double[] solve(Node node) {
-        if (node.payoffs != null) {
-            return node.payoffs;
-        }
+    private double[] solve(GameNode node) {
+        if (node.payoffs != null) return node.payoffs;
+        double[] best = null;
+        double max = Double.NEGATIVE_INFINITY;
+        int pIdx = node.player - 1;
 
-        double[] optimalPayoffs = null;
-        double maxBenefitForActivePlayer = Double.NEGATIVE_INFINITY;
-
-        // Игрок, делающий ход в этом узле, просматривает все варианты впереди
-        for (Node child : node.moves.values()) {
-            double[] potentialOutcome = solve(child);
-
-            // Индекс игрока в массиве (игрок 1 -> индекс 0)
-            int pIdx = node.actingPlayer - 1;
-
-            // Если этот вариант лучше для ТЕКУЩЕГО игрока, выбираем его
-            if (potentialOutcome[pIdx] > maxBenefitForActivePlayer) {
-                maxBenefitForActivePlayer = potentialOutcome[pIdx];
-                optimalPayoffs = potentialOutcome;
+        for (GameNode child : node.next) {
+            double[] cur = solve(child);
+            if (cur[pIdx] > max) {
+                max = cur[pIdx];
+                best = cur;
             }
         }
-        return optimalPayoffs;
+        return best;
     }
 
-    /**
-     * Красивый вывод структуры дерева
-     */
-    static void printTree(Node node, String indent) {
-        if (node.payoffs != null) {
-            System.out.print(indent + "└── [ВЫПЛАТЫ: ");
-            for (double p : node.payoffs) System.out.print(p + " ");
-            System.out.println("]");
-        } else {
-            System.out.println(indent + "├── [Узел: " + node.path + " | Ходит Игрок: " + node.actingPlayer + "]");
-            for (Map.Entry<String, Node> entry : node.moves.entrySet()) {
-                System.out.println(indent + "    │ ход: " + entry.getKey());
-                printTree(entry.getValue(), indent + "    │");
-            }
-        }
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Main().setVisible(true));
     }
 }
