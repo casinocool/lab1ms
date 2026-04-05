@@ -8,6 +8,7 @@ import com.mxgraph.model.mxCell;
 import com.mxgraph.swing.handler.mxKeyboardHandler;
 import com.mxgraph.swing.mxGraphComponent;
 import com.mxgraph.util.mxConstants;
+import com.mxgraph.util.mxEvent;
 import com.mxgraph.view.mxGraph;
 
 import javax.swing.JButton;
@@ -22,11 +23,15 @@ import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +42,9 @@ public class Main extends JFrame {
     private Object parent;
     private int totalPlayers = 2;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+
+    private final List<String> changeHistory = new ArrayList<>();
+    private final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
 
     public Main() {
         super("Редактор динамических игр (Теория игр)");
@@ -57,6 +65,13 @@ public class Main extends JFrame {
             graph.getModel().endUpdate();
         }
 
+        graph.getModel().addListener(mxEvent.CHANGE, (sender, evt) -> {
+            // Чтобы не спамить в логи техническими изменениями,
+            // записываем только когда меняется текст (Label)
+            logAction("Изменена структура или данные графа");
+        });
+
+
         graphComponent = new mxGraphComponent(graph);
         getContentPane().add(graphComponent, BorderLayout.CENTER);
 
@@ -65,21 +80,22 @@ public class Main extends JFrame {
         JPanel panel = new JPanel();
         JButton solveBtn = new JButton("РАССЧИТАТЬ");
         JButton playersBtn = new JButton("Игроков: " + totalPlayers);
-
+        JButton logBtn = new JButton("СОХРАНИТЬ ЛОГ");
         JButton saveBtn = new JButton("СОХРАНИТЬ JSON");
         JButton loadBtn = new JButton("ЗАГРУЗИТЬ JSON");
 
         panel.add(new JLabel("ПКМ - добавить ход | Del - Удалить |"));
         panel.add(playersBtn);
         panel.add(solveBtn);
-
         panel.add(saveBtn);
         panel.add(loadBtn);
+        panel.add(logBtn);
 
         getContentPane().add(panel, BorderLayout.SOUTH);
 
         saveBtn.addActionListener(e -> saveToJson());
         loadBtn.addActionListener(e -> loadFromJson());
+        logBtn.addActionListener(e -> saveHistoryToFile());
 
         graphComponent.getGraphControl().addMouseListener(new MouseAdapter() {
             @Override
@@ -105,6 +121,25 @@ public class Main extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
     }
+    private void logAction(String action) {
+        String time = sdf.format(new Date());
+        changeHistory.add("[" + time + "] " + action);
+    }
+
+    private void saveHistoryToFile() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setSelectedFile(new File("game_history.txt"));
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try (PrintWriter writer = new PrintWriter(new FileWriter(fileChooser.getSelectedFile()))) {
+                writer.println("ИСТОРИЯ ИЗМЕНЕНИЙ ГРАФА:");
+                for (String line : changeHistory) writer.println(line);
+                JOptionPane.showMessageDialog(this, "Лог сохранен успешно!");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "Ошибка при сохранении лога!");
+            }
+        }
+    }
+
     static class SaveModel {
         int players;
         List<NodeDto> nodes = new ArrayList<>();
@@ -271,16 +306,41 @@ public class Main extends JFrame {
 
     private void calculateGame() {
         try {
+            System.out.println("\n" + "=".repeat(50));
+            System.out.println("НАЧАЛО РАСЧЕТА ДИНАМИЧЕСКОЙ ИГРЫ");
+
             resetStyles();
-
+            System.out.println("\nСТРУКТУРА ГРАФА (ТЕКСТОВЫЙ ВИД):");
             mxCell rootCell = (mxCell) graph.getChildVertices(parent)[0];
-            GameNode rootLogic = convertToLogic(rootCell);
+            printTextGraph(rootCell, 0);
 
-            double[] res = solve(rootLogic);
+            System.out.println("\nШАГИ АЛГОРИТМА (ОБРАТНАЯ ИНДУКЦИЯ):");
+            GameNode rootLogic = convertToLogic(rootCell);
+            double[] res = solveWithTrace(rootLogic,0);
+
             highlightPath(rootLogic);
+
+            System.out.println("\nИТОГОВОЕ РАВНОВЕСИЕ: " + Arrays.toString(res));
+            System.out.println("=".repeat(50));
+
             JOptionPane.showMessageDialog(this, "Оптимальный исход: " + Arrays.toString(res));
+
+            logAction("Выполнен расчет игры. Результат: " + Arrays.toString(res));
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Ошибка! Проверьте данные в узлах.\n" + ex.getMessage());
+        }
+    }
+    private void printTextGraph(mxCell cell, int level) {
+        String indent = "  ".repeat(level);
+        String value = cell.getValue().toString();
+        System.out.println(indent + "└── Node: " + value);
+
+        for (int i = 0; i < cell.getEdgeCount(); i++) {
+            mxCell edge = (mxCell) cell.getEdgeAt(i);
+            if (edge.getSource() == cell) {
+                System.out.println(indent + "    Move: [" + edge.getValue() + "]");
+                printTextGraph((mxCell) edge.getTarget(), level + 2);
+            }
         }
     }
 
@@ -306,26 +366,43 @@ public class Main extends JFrame {
         return node;
     }
 
-    private double[] solve(GameNode node) {
-        if (node.payoffs != null) return node.payoffs;
-        double[] best = null;
+    private double[] solveWithTrace(GameNode node, int depth) {
+        String indent = "  ".repeat(depth);
+
+        if (node.payoffs != null) {
+            System.out.println(indent + "└── [Лист] Достигнут финал. Выигрыши: " + Arrays.toString(node.payoffs));
+            return node.payoffs;
+        }
+
+        System.out.println(indent + "┌── [Узел " + node.visualCell.getValue() + "] Анализирует Игрок " + node.player);
+
+        double[] bestOutcome = null;
         double max = Double.NEGATIVE_INFINITY;
         int pIdx = node.player - 1;
 
         for (Map.Entry<mxCell, GameNode> entry : node.children.entrySet()) {
-            double[] current = solve(entry.getValue());
-            double currentVal = current[pIdx];
-            if (currentVal > max + 0.0001) {
-                max = currentVal;
-                best = current;
+            mxCell edge = entry.getKey();
+            System.out.println(indent + "│ Проверка хода: [" + edge.getValue() + "]");
+
+            double[] current = solveWithTrace(entry.getValue(), depth + 3);
+            double val = current[pIdx];
+
+            System.out.println(indent + "│ Ход [" + edge.getValue() + "] дает Игроку " + node.player + " профит: " + val);
+
+            if (val > max + 0.0001) {
+                max = val;
+                bestOutcome = current;
                 node.bestEdges.clear();
-                node.bestEdges.add(entry.getKey());
-            }
-            else if (Math.abs(currentVal - max) < 0.0001) {
-                node.bestEdges.add(entry.getKey());
+                node.bestEdges.add(edge);
+                System.out.println(indent + "│ +++ Это ЛУЧШИЙ вариант для игрока " + node.player);
+            } else if (Math.abs(val - max) < 0.0001) {
+                node.bestEdges.add(edge);
+                System.out.println(indent + "│ === Еще одно равновесное решение (профит такой же)");
             }
         }
-        return best;
+
+        System.out.println(indent + "└── Игрок " + node.player + " в узле " + node.visualCell.getValue() + " выбирает результат " + Arrays.toString(bestOutcome));
+        return bestOutcome;
     }
 
     private void highlightPath(GameNode node) {

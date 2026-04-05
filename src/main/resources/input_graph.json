@@ -1,0 +1,38 @@
+{
+  "players": 3,
+  "nodes": [
+    { "id": "1", "value": "P1", "x": 500.0, "y": 20.0 },
+    { "id": "2", "value": "P2", "x": 300.0, "y": 100.0 },
+    { "id": "3", "value": "0,0,0", "x": 700.0, "y": 100.0 },
+    { "id": "4", "value": "P3", "x": 300.0, "y": 180.0 },
+    { "id": "5", "value": "P1", "x": 300.0, "y": 260.0 },
+    { "id": "6", "value": "P2", "x": 300.0, "y": 340.0 },
+    { "id": "7", "value": "P3", "x": 300.0, "y": 420.0 },
+    { "id": "8", "value": "P1", "x": 300.0, "y": 500.0 },
+    { "id": "9", "value": "P2", "x": 300.0, "y": 580.0 },
+    { "id": "10", "value": "P3", "x": 300.0, "y": 660.0 },
+    { "id": "11", "value": "P1", "x": 300.0, "y": 740.0 },
+    { "id": "12", "value": "50,30,100", "x": 200.0, "y": 820.0 },
+    { "id": "13", "value": "80,80,20", "x": 400.0, "y": 820.0 },
+    { "id": "14", "value": "10,10,10", "x": 500.0, "y": 660.0 },
+    { "id": "15", "value": "5,5,50", "x": 500.0, "y": 500.0 },
+    { "id": "16", "value": "100,10,0", "x": 500.0, "y": 340.0 }
+  ],
+  "edges": [
+    { "sourceId": "1", "targetId": "2", "label": "Инновации" },
+    { "sourceId": "1", "targetId": "3", "label": "Копирование" },
+    { "sourceId": "2", "targetId": "4", "label": "Партнерство" },
+    { "sourceId": "4", "targetId": "5", "label": "Субсидии" },
+    { "sourceId": "5", "targetId": "6", "label": "Агрессивный" },
+    { "sourceId": "6", "targetId": "7", "label": "Хантинг" },
+    { "sourceId": "7", "targetId": "8", "label": "Игнорировать" },
+    { "sourceId": "8", "targetId": "9", "label": "Азия" },
+    { "sourceId": "9", "targetId": "10", "label": "Открытое" },
+    { "sourceId": "10", "targetId": "11", "label": "Мягкий" },
+    { "sourceId": "11", "targetId": "12", "label": "Продажа" },
+    { "sourceId": "11", "targetId": "13", "label": "IPO" },
+    { "sourceId": "10", "targetId": "14", "label": "Жесткий" },
+    { "sourceId": "8", "targetId": "15", "label": "Европа" },
+    { "sourceId": "5", "targetId": "16", "label": "Сдержанный" }
+  ]
+}
