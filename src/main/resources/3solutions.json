@@ -1,0 +1,47 @@
+{
+  "players": 3,
+  "nodes": [
+    { "id": "n1", "value": "P1", "x": 500, "y": 20 },
+    { "id": "n2", "value": "P2", "x": 300, "y": 100 },
+    { "id": "n3", "value": "P2", "x": 700, "y": 100 },
+    { "id": "n4", "value": "P3", "x": 200, "y": 180 },
+    { "id": "n5", "value": "0,0,0", "x": 400, "y": 180 },
+    { "id": "n6", "value": "P3", "x": 600, "y": 180 },
+    { "id": "n7", "value": "0,0,0", "x": 800, "y": 180 },
+    { "id": "n8", "value": "P1", "x": 150, "y": 260 },
+    { "id": "n9", "value": "0,0,0", "x": 250, "y": 260 },
+    { "id": "n12", "value": "P1", "x": 550, "y": 260 },
+    { "id": "n13", "value": "P1", "x": 650, "y": 260 },
+    { "id": "win1", "value": "10,5,5", "x": 100, "y": 340 },
+    { "id": "fail1", "value": "0,0,0", "x": 200, "y": 340 },
+    { "id": "win2", "value": "10,7,7", "x": 500, "y": 340 },
+    { "id": "fail2", "value": "0,0,0", "x": 600, "y": 340 },
+    { "id": "win3", "value": "10,7,7", "x": 700, "y": 340 },
+    { "id": "fail3", "value": "0,0,0", "x": 800, "y": 340 }
+  ],
+  "edges": [
+    { "sourceId": "n1", "targetId": "n2", "label": "Влево" },
+    { "sourceId": "n1", "targetId": "n3", "label": "Вправо" },
+
+    { "sourceId": "n2", "targetId": "n4", "label": "ОК" },
+    { "sourceId": "n2", "targetId": "n5", "label": "СТОП" },
+
+    { "sourceId": "n3", "targetId": "n6", "label": "ОК" },
+    { "sourceId": "n3", "targetId": "n7", "label": "СТОП" },
+
+    { "sourceId": "n4", "targetId": "n8", "label": "Идем" },
+    { "sourceId": "n4", "targetId": "n9", "label": "Уходим" },
+
+    { "sourceId": "n6", "targetId": "n12", "label": "Вариант_А" },
+    { "sourceId": "n6", "targetId": "n13", "label": "Вариант_Б" },
+
+    { "sourceId": "n8", "targetId": "win1", "label": "Финал1" },
+    { "sourceId": "n8", "targetId": "fail1", "label": "Провал" },
+
+    { "sourceId": "n12", "targetId": "win2", "label": "Финал2" },
+    { "sourceId": "n12", "targetId": "fail2", "label": "Провал" },
+
+    { "sourceId": "n13", "targetId": "win3", "label": "Финал3" },
+    { "sourceId": "n13", "targetId": "fail3", "label": "Провал" }
+  ]
+}
